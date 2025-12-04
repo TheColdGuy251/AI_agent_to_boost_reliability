@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Роснефть - Оценка ремонта оборудования</title>
+  <link rel="stylesheet" href="../static/css/style.css?v=2">
+</head>
+<body>
+  <header class="header">
+    <div class="header-content">
+      <img src="../static/js/public/Rosneft_Logo_2016.svg.png" alt="Роснефть" class="logo-img">
+      <div class="header-actions">
+        <button class="notifications-button" id="notificationsButton">
+          <svg class="notification-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18 8C18 6.4087 17.3679 4.88258 16.2426 3.75736C15.1174 2.63214 13.5913 2 12 2C10.4087 2 8.88258 2.63214 7.75736 3.75736C6.63214 4.88258 6 6.4087 6 8C6 15 3 17 3 17H21C21 17 18 15 18 8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M13.73 21C13.5542 21.3031 13.3019 21.5547 12.9982 21.7295C12.6946 21.9044 12.3504 21.9965 12 21.9965C11.6496 21.9965 11.3054 21.9044 11.0018 21.7295C10.6982 21.5547 10.4458 21.3031 10.27 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span class="notification-badge" id="notificationBadge">3</span>
+        </button>
+        <div class="profile" id="profileButton">
+          <div class="profile-avatar">ИС</div>
+          <span class="profile-name">Илья С.</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="profile-modal" id="profileModal">
+    <div class="profile-modal-content">
+      <button class="back-button" id="backButton">← Назад</button>
+      <div class="profile-modal-header">
+        <div class="profile-modal-avatar">ИС</div>
+        <div class="profile-modal-info">
+          <h3>Илья Смирнов</h3>
+          <p>Инженер по ремонту оборудования</p>
+        </div>
+      </div>
+      <div class="profile-menu">
+        <button class="profile-menu-item" id="myTasksButton">
+          <span class="menu-icon">📋</span>
+          <span>Мои задачи</span>
+        </button>
+        <button class="profile-menu-item" id="newTaskButton">
+          <span class="menu-icon">➕</span>
+          <span>Создать новую задачу</span>
+        </button>
+      </div>
+      <button class="logout-button" id="logoutButton">Выйти</button>
+    </div>
+  </div>
+
+  <div class="notifications-modal" id="notificationsModal">
+    <div class="notifications-modal-content">
+      <button class="back-button" id="notificationsBackButton">← Назад</button>
+      <h3>Уведомления</h3>
+      <div class="notifications-list" id="notificationsList">
+        <div class="notification-item unread">
+          <div class="notification-icon-wrapper">⚠️</div>
+          <div class="notification-content">
+            <p class="notification-title">Приближается дедлайн</p>
+            <p class="notification-text">Задача "Ремонт турбины" должна быть завершена через 2 часа</p>
+            <p class="notification-time">30 минут назад</p>
+          </div>
+        </div>
+        <div class="notification-item unread">
+          <div class="notification-icon-wrapper">✅</div>
+          <div class="notification-content">
+            <p class="notification-title">Задача завершена</p>
+            <p class="notification-text">Задача "Проверка насосов" успешно завершена</p>
+            <p class="notification-time">1 час назад</p>
+          </div>
+        </div>
+        <div class="notification-item unread">
+          <div class="notification-icon-wrapper">📝</div>
+          <div class="notification-content">
+            <p class="notification-title">Новая задача</p>
+            <p class="notification-text">Вам назначена новая задача "Диагностика компрессора"</p>
+            <p class="notification-time">3 часа назад</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tasks-modal" id="tasksModal">
+    <div class="tasks-modal-content">
+      <button class="back-button" id="tasksBackButton">← Назад</button>
+      <h3>Мои задачи</h3>
+      <div class="tasks-list" id="tasksList"></div>
+    </div>
+  </div>
+
+  <main class="container">
+    <div class="task-form" id="taskForm">
+      <h2>Создание задачи</h2>
+      <form id="taskFormElement">
+        <div class="form-group">
+          <label for="taskTitle">Название задачи</label>
+          <input type="text" id="taskTitle" required placeholder="Введите название задачи">
+        </div>
+        <div class="form-group">
+          <label for="taskDeadline">Срок выполнения</label>
+          <input type="datetime-local" id="taskDeadline" required>
+        </div>
+        <div class="form-group">
+          <label for="taskDescription">Описание задачи</label>
+          <textarea id="taskDescription" required placeholder="Опишите задачу..."></textarea>
+        </div>
+        <button type="submit" class="submit-button">Начать работу с ИИ ассистентом</button>
+      </form>
+    </div>
+
+    <div class="chat-box" id="chatBox" style="display: none;">
+      <div class="chat-header">
+        <div class="bot-avatar">🤖</div>
+        <div class="chat-header-text">
+          <h2>ИИ ассистент</h2>
+          <p>Онлайн</p>
+        </div>
+      </div>
+
+      <div class="messages" id="messages"></div>
+
+      <div class="input-area">
+        <input
+          type="text"
+          id="messageInput"
+          placeholder="Опишите проблему с оборудованием..."
+          autocomplete="off"
+        />
+        <button class="send-button" id="sendButton">Отправить</button>
+      </div>
+    </div>
+  </main>
+
+  <script type="module" src="../static/js/script.js"></script>
+</body>
+</html>
