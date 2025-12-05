@@ -28,10 +28,15 @@
 
 <div class="input-area">
   <div class="input-controls">
-    <label for="fileInput" class="attach-button" id="attachButton" title="Прикрепить файл (.docx)">
-      📎
-      <input type="file" id="fileInput" accept=".docx" style="display: none;">
-    </label>
+<label for="fileInput" class="attach-button" id="attachButton" title="Прикрепить файл (.docx)">
+  <!-- inline SVG бумажной скрепки (более официальный, масштабируемый) -->
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+    <path d="M21 11.5v6.25a4 4 0 0 1-4 4H8.5a4 4 0 0 1-4-4v-8.75A3.75 3.75 0 0 1 8.25 4H16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M7 8.5V19a2 2 0 0 0 2 2H17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <input type="file" id="fileInput" accept=".docx" style="display: none;">
+</label>
+
     <input
       type="text"
       id="messageInput"

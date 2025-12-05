@@ -1125,6 +1125,31 @@ def upload_chat_document():
             # Получаем обновленную информацию о коллекции
             collection_info = document_processor.get_collection_info()
 
+            # Запишем в историю чата сообщение от ассистента, что файл добавлен.
+            try:
+                with session_scope() as db_session:
+                    chat_session = db_session.query(ChatSession).filter_by(
+                        session_id=session_id,
+                        user_id=current_user.id
+                    ).first()
+                    if chat_session:
+                        assistant_msg = ChatMessage(
+                            session_id=chat_session.id,
+                            role='assistant',
+                            content=(
+                                f'Документ \"{file.filename}\" был успешно загружен и добавлен в базу знаний.\n\n'
+                                f'Фрагментов: {doc_info.get("chunk_count", "неизвестно")}.\n'
+                                'Теперь вы можете задавать вопросы по содержанию этого файла; '
+                                'модель будет использовать содержимое из векторной БД при поиске релевантных ответов.'
+                            ),
+                            is_read=False
+                        )
+                        db_session.add(assistant_msg)
+                        chat_session.last_activity = datetime.utcnow()
+                        db_session.commit()
+            except Exception:
+                logger.exception("Не удалось сохранить assistant message о загруженном документе в БД")
+
             return jsonify({
                 'success': True,
                 'message': 'Документ успешно загружен и добавлен в базу знаний',
