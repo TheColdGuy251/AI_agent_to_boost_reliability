@@ -1,125 +1,57 @@
-<!doctype html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Роснефть - Мои задачи</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2">
-</head>
-<body>
-  <header class="header">
-    <div class="header-content">
-      <img src="{{ url_for('static', filename='images/Rosneft_Logo_2016.png') }}"
-     alt="Роснефть"
-     class="logo-img"
-     onclick="window.location.href='/'"
-     style="cursor: pointer;">
-      <div class="header-actions">
-        <button class="notifications-button" id="notificationsButton">
-    <svg class="notification-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M18 8C18 6.4087 17.3679 4.88258 16.2426 3.75736C15.1174 2.63214 13.5913 2 12 2C10.4087 2 8.88258 2.63214 7.75736 3.75736C6.63214 4.88258 6 6.4087 6 8C6 15 3 17 3 17H21C21 17 18 15 18 8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M13.73 21C13.5542 21.3031 13.3019 21.5547 12.9982 21.7295C12.6946 21.9044 12.3504 21.9965 12 21.9965C11.6496 21.9965 11.3054 21.9044 11.0018 21.7295C10.6982 21.5547 10.4458 21.3031 10.27 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-    <span class="notification-badge" id="notificationBadge">0</span>
-</button>
-        <div class="profile" id="profileButton">
-          <div class="profile-avatar">{{ user_initials }}</div>
-          <span class="profile-name">{{ user_name }}</span>
-        </div>
-      </div>
-    </div>
-  </header>
+{% extends "base.html" %}
 
-  <!-- Модальное окно профиля -->
-  <div class="profile-modal" id="profileModal">
-    <div class="profile-modal-content">
-      <button class="back-button" id="backButton">← Назад</button>
-      <div class="profile-modal-header">
-        <div class="profile-modal-avatar">{{ user_initials }}</div>
-        <div class="profile-modal-info">
-          <h3>{{ user_full_name }}</h3>
-          <p>{{ user_position }}</p>
-        </div>
-      </div>
-      <div class="profile-menu">
-        <button class="profile-menu-item active" id="myTasksButton">
-          <span class="menu-icon">📋</span>
-          <span>Мои задачи</span>
-        </button>
-        <button class="profile-menu-item" id="newTaskButton">
-          <span class="menu-icon">➕</span>
-          <span>Создать новую задачу</span>
-        </button>
-      </div>
-      <button class="logout-button" id="logoutButton">Выйти</button>
+{% block title %}Мои задачи{% endblock %}
+
+{% block content %}
+  <!-- Заголовок и фильтры -->
+  <div class="tasks-header">
+    <h1>Мои задачи</h1>
+    <div class="tasks-filters">
+      <button class="filter-btn active" data-filter="all">Все задачи</button>
+      <button class="filter-btn" data-filter="active">Активные</button>
+      <button class="filter-btn" data-filter="completed">Завершенные</button>
+      <button class="filter-btn" data-filter="overdue">Просроченные</button>
+    </div>
+    <button class="create-task-btn" id="createTaskBtn">➕ Создать задачу</button>
+  </div>
+
+  <!-- Статистика -->
+  <div class="stats-container" id="statsContainer">
+    <!-- Статистика будет загружена динамически -->
+  </div>
+
+  <!-- Список задач -->
+  <div class="tasks-container">
+    <div class="tasks-list" id="tasksList">
+      <!-- Задачи будут загружены динамически -->
     </div>
   </div>
 
-  <!-- Модальное окно уведомлений -->
-  <div class="notifications-modal" id="notificationsModal">
-    <div class="notifications-modal-content">
-      <button class="back-button" id="notificationsBackButton">← Назад</button>
-      <h3>Уведомления</h3>
-      <div class="notifications-list" id="notificationsList">
-        <!-- Уведомления будут загружены динамически -->
+  <!-- Форма создания задачи -->
+  <div class="task-form-modal" id="taskFormModal">
+    <div class="task-form-modal-content">
+      <div class="task-form-header">
+        <h2>Создание задачи</h2>
+        <button class="close-btn" id="closeTaskForm">×</button>
       </div>
+      <form id="taskForm">
+        <div class="form-group">
+          <label for="taskTitle">Название задачи *</label>
+          <input type="text" id="taskTitle" required placeholder="Введите название задачи">
+        </div>
+        <div class="form-group">
+          <label for="taskDescription">Описание задачи</label>
+          <textarea id="taskDescription" placeholder="Опишите детали задачи..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="taskDeadline">Срок выполнения *</label>
+          <input type="datetime-local" id="taskDeadline" required>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="cancel-btn" id="cancelTaskForm">Отмена</button>
+          <button type="submit" class="submit-btn">Создать задачу</button>
+        </div>
+      </form>
     </div>
   </div>
-
-  <main class="container">
-    <!-- Заголовок и фильтры -->
-    <div class="tasks-header">
-      <h1>Мои задачи</h1>
-      <div class="tasks-filters">
-        <button class="filter-btn active" data-filter="all">Все задачи</button>
-        <button class="filter-btn" data-filter="active">Активные</button>
-        <button class="filter-btn" data-filter="completed">Завершенные</button>
-        <button class="filter-btn" data-filter="overdue">Просроченные</button>
-      </div>
-      <button class="create-task-btn" id="createTaskBtn">➕ Создать задачу</button>
-    </div>
-
-    <!-- Статистика -->
-    <div class="stats-container" id="statsContainer">
-      <!-- Статистика будет загружена динамически -->
-    </div>
-
-        <!-- Список задач -->
-    <div class="tasks-container">
-      <div class="tasks-list" id="tasksList">
-        <!-- Задачи будут загружены динамически -->
-      </div>
-    </div>
-
-    <!-- Форма создания задачи -->
-    <div class="task-form-modal" id="taskFormModal">
-      <div class="task-form-modal-content">
-        <div class="task-form-header">
-          <h2>Создание задачи</h2>
-          <button class="close-btn" id="closeTaskForm">×</button>
-        </div>
-        <form id="taskForm">
-          <div class="form-group">
-            <label for="taskTitle">Название задачи *</label>
-            <input type="text" id="taskTitle" required placeholder="Введите название задачи">
-          </div>
-          <div class="form-group">
-            <label for="taskDescription">Описание задачи</label>
-            <textarea id="taskDescription" placeholder="Опишите детали задачи..."></textarea>
-          </div>
-          <div class="form-group">
-            <label for="taskDeadline">Срок выполнения *</label>
-            <input type="datetime-local" id="taskDeadline" required>
-          </div>
-          <div class="form-actions">
-            <button type="button" class="cancel-btn" id="cancelTaskForm">Отмена</button>
-            <button type="submit" class="submit-btn">Создать задачу</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </main>
-
-  <script src="{{ url_for('static', filename='js/tasks.js') }}"></script>
-</body>
-</html>
+{% endblock %}

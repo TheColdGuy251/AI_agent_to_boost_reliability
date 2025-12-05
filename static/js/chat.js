@@ -1,110 +1,104 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Элементы DOM
-    const profileButton = document.getElementById('profileButton');
-    const profileModal = document.getElementById('profileModal');
-    const backButton = document.getElementById('backButton');
-    const notificationsButton = document.getElementById('notificationsButton');
-    const notificationsModal = document.getElementById('notificationsModal');
-    const notificationsBackButton = document.getElementById('notificationsBackButton');
-    const logoutButton = document.getElementById('logoutButton');
-    const myTasksButton = document.getElementById('myTasksButton');
-    const newTaskButton = document.getElementById('newTaskButton');
+    // Элементы DOM, специфичные для чата
     const backToTasksBtn = document.getElementById('backToTasksBtn');
-
     const messageInput = document.getElementById('messageInput');
     const sendButton = document.getElementById('sendButton');
     const messagesContainer = document.getElementById('messages');
     const chatStatus = document.getElementById('chatStatus');
 
     // Данные сессии
-    const sessionId = document.getElementById('sessionId').value;
-    const taskId = document.getElementById('taskId').value;
+    const sessionId = document.getElementById('sessionId')?.value;
+    const taskId = document.getElementById('taskId')?.value;
 
     // Переменные для непрочитанных сообщений
     let unreadMessages = new Set();
     let checkUnreadInterval = null;
 
+    // Текущее состояние подписки/стрима
+    let currentStreaming = {
+        assistantId: null,    // активный assistant_message.id (int)
+        controller: null,     // AbortController для fetch
+        reader: null,         // reader от response.body.getReader()
+        active: false,        // флаг активности подписки
+        lastSeqSeen: 0        // последний seq, который клиент увидел
+    };
+
+    // Хранит id последнего ассистентского сообщения из истории (если есть)
+    let lastAssistantId = null;
+
     // Инициализация
     if (sessionId) {
         loadMessages();
-        chatStatus.textContent = 'Онлайн';
+        if (chatStatus) chatStatus.textContent = 'Онлайн';
         // Запускаем проверку непрочитанных сообщений через 1 секунду
         setTimeout(startUnreadCheck, 1000);
-    } else {
+    } else if (chatStatus) {
         chatStatus.textContent = 'Сессия не найдена';
     }
 
-    // События модальных окон
-    profileButton.addEventListener('click', () => {
-        profileModal.classList.add('active');
-    });
-
-    backButton.addEventListener('click', () => {
-        profileModal.classList.remove('active');
-    });
-
-    notificationsButton.addEventListener('click', () => {
-        notificationsModal.classList.add('active');
-        loadNotifications();
-    });
-
-    notificationsBackButton.addEventListener('click', () => {
-        notificationsModal.classList.remove('active');
-    });
-
-    // Отправка сообщения
-    sendButton.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-
     // Навигация
-    backToTasksBtn.addEventListener('click', () => {
-        window.location.href = '/tasks';
-    });
+    if (backToTasksBtn) {
+        backToTasksBtn.addEventListener('click', () => {
+            window.location.href = '/tasks';
+        });
+    }
 
-    myTasksButton.addEventListener('click', () => {
-        window.location.href = '/tasks';
-    });
-
-    newTaskButton.addEventListener('click', () => {
-        window.location.href = '/tasks';
-    });
-
-    logoutButton.addEventListener('click', async () => {
-        if (!confirm('Вы уверены, что хотите выйти из системы?')) return;
-
+    // Устанавливаем один обработчик для кнопки: поведение зависит от режима (send/abort)
+async function handleSendButtonClick(e) {
+    if (currentStreaming.active) {
+        // режим: прервать — вызываем серверный abort, затем локально отменяем
         try {
-            const response = await fetch('/auth/logout', {
+            const payload = {
+                session_id: sessionId,
+                assistant_message_id: currentStreaming.assistantId || null
+            };
+            await fetch('/api/chat/stream/abort', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
+        } catch (err) {
+            console.error('Не удалось отправить запрос на отмену генерации:', err);
+            // Продолжаем: всё равно нужно локально закрыть подписку
+        } finally {
+            // Добавим локальную пометку "прервано" для временного ассистентского пузыря
+            markLocalAssistantAsCancelled();
+            // Закрываем подписку/stream
+            abortCurrentSubscription();
+        }
+    } else {
+        sendMessage();
+    }
+}
 
-            const data = await response.json();
-
-            if (data.success) {
-                window.location.href = '/auth/login';
-            } else {
-                alert('Ошибка при выходе: ' + data.error);
+    if (sendButton && messageInput) {
+        sendButton.addEventListener('click', handleSendButtonClick);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                // если в стриме — не отправляем, иначе отправляем
+                if (!currentStreaming.active) sendMessage();
             }
-        } catch (error) {
-            console.error('Error:', error);
-            alert('Ошибка соединения');
+        });
+    }
+
+    // При возврате в фокус — попытаемся переподписаться на активный стрим
+    window.addEventListener('focus', () => {
+        if (lastAssistantId && !currentStreaming.active) {
+            startStreaming({ assistantId: lastAssistantId, lastSeqSeen: currentStreaming.lastSeqSeen });
+        } else {
+            if (!currentStreaming.active) loadMessages();
         }
     });
 
-    // Проверяем непрочитанные при фокусе на окне
-    window.addEventListener('focus', checkVisibleMessages);
-
-    // Проверяем при возвращении на вкладку
-    document.addEventListener('visibilitychange', function() {
+    // При видимости страницы — переподписываемся
+    document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
-            checkVisibleMessages();
+            if (lastAssistantId && !currentStreaming.active) {
+                startStreaming({ assistantId: lastAssistantId, lastSeqSeen: currentStreaming.lastSeqSeen });
+            } else {
+                if (!currentStreaming.active) loadMessages();
+            }
         }
     });
 
@@ -113,11 +107,59 @@ document.addEventListener('DOMContentLoaded', function() {
         if (checkUnreadInterval) {
             clearInterval(checkUnreadInterval);
         }
+        abortCurrentSubscription();
     });
+function markLocalAssistantAsCancelled() {
+    if (!messagesContainer) return;
+    try {
+        // Пытаемся найти элемент с текущим assistantId
+        let el = null;
+        if (currentStreaming.assistantId) {
+            el = messagesContainer.querySelector(`[data-message-id="${currentStreaming.assistantId}"]`);
+        }
+        // Если не найден — возьмём последний бот-пузырь (temp)
+        if (!el) {
+            const botMessages = messagesContainer.querySelectorAll('.message.bot');
+            if (botMessages && botMessages.length > 0) {
+                el = botMessages[botMessages.length - 1];
+            }
+        }
+        if (el) {
+            const contentEl = el.querySelector('.message-content');
+            if (contentEl) {
+                // Добавим пометку в конце
+                if (!contentEl.textContent.includes('(Генерация прервана)')) {
+                    contentEl.textContent = (contentEl.textContent || '') + '\n\n(Генерация прервана)';
+                }
+            }
+        }
+    } catch (e) {
+        console.error('markLocalAssistantAsCancelled error', e);
+    }
+}
 
-    // Функции
+    // ----------------- UI helper: режим стрима -----------------
+    function setStreamingUI(active) {
+        if (!messageInput || !sendButton) return;
+        if (active) {
+            // блокируем ввод и меняем поведение/вид кнопки
+            messageInput.disabled = true;
+            sendButton.textContent = 'Прервать';
+            sendButton.classList.add('abort');
+            sendButton.setAttribute('aria-pressed', 'true');
+            chatStatus.textContent = 'Генерация...';
+        } else {
+            messageInput.disabled = false;
+            sendButton.textContent = 'Отправить';
+            sendButton.classList.remove('abort');
+            sendButton.setAttribute('aria-pressed', 'false');
+            chatStatus.textContent = 'Онлайн';
+        }
+    }
+
+    // ----------------- Функции -----------------
     async function loadMessages() {
-        if (!sessionId) return;
+        if (!sessionId || !messagesContainer) return;
 
         try {
             const response = await fetch(`/api/chat/messages?session_id=${sessionId}&mark_as_read=false`);
@@ -127,6 +169,43 @@ document.addEventListener('DOMContentLoaded', function() {
                 renderMessages(data.messages);
                 updateUnreadCount(data.unread_count || 0);
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+                // Проверяем активные фоновые стримы на сервере для этой сессии
+                try {
+                    const activeResp = await fetch(`/api/chat/stream/active?session_id=${sessionId}`);
+                    if (activeResp.ok) {
+                        const activeData = await activeResp.json();
+                        if (activeData && activeData.success && Array.isArray(activeData.active) && activeData.active.length > 0) {
+                            // Берём самую свежую активную задачу (последняя по started_at)
+                            const sorted = activeData.active.sort((a, b) => {
+                                const ta = a.started_at ? new Date(a.started_at).getTime() : 0;
+                                const tb = b.started_at ? new Date(b.started_at).getTime() : 0;
+                                return tb - ta;
+                            });
+                            const active = sorted[0];
+                            if (active && active.message_id) {
+                                // Обновим UI текущим содержимым (если есть) и подпишемся
+                                const elem = messagesContainer.querySelector(`[data-message-id="${active.message_id}"]`);
+                                if (elem) {
+                                    const contentEl = elem.querySelector('.message-content');
+                                    if (contentEl && active.content) contentEl.textContent = active.content;
+                                } else {
+                                    addMessageToUI('assistant', active.content || '', active.message_id, false);
+                                }
+
+                                lastAssistantId = active.message_id;
+                                currentStreaming.lastSeqSeen = active.last_seq || 0;
+                                startStreaming({ assistantId: lastAssistantId, lastSeqSeen: currentStreaming.lastSeqSeen });
+                                return;
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error('Не удалось проверить активный стрим:', err);
+                }
+
+                // Если активных стримов не найдено — используем старую эвристику
+                maybeSubscribeToStreaming(data.messages);
             } else {
                 showErrorMessage('Ошибка загрузки сообщений: ' + data.error);
             }
@@ -136,8 +215,235 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function maybeSubscribeToStreaming(messages) {
+        if (!messages || messages.length === 0) return;
+
+        // Берём последний ассистентский message
+        const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
+        if (!lastAssistant) return;
+
+        lastAssistantId = lastAssistant.id;
+
+        // Эвристика: если сообщение создано недавно или короткое — считаем, что оно возможно ещё в процессе генерации
+        const CREATED_THRESHOLD_MINUTES = 30;
+        let shouldSubscribe = false;
+        try {
+            if (lastAssistant.created_at) {
+                const createdAt = new Date(lastAssistant.created_at);
+                const diffMin = (Date.now() - createdAt.getTime()) / 60000;
+                if (diffMin <= CREATED_THRESHOLD_MINUTES) shouldSubscribe = true;
+            } else {
+                shouldSubscribe = true;
+            }
+        } catch (e) {
+            shouldSubscribe = true;
+        }
+        if (!lastAssistant.content || lastAssistant.content.length < 20) shouldSubscribe = true;
+
+        if (shouldSubscribe) {
+            // Подписываемся на уже существующую генерацию
+            startStreaming({ assistantId: lastAssistantId, lastSeqSeen: 0 });
+        }
+    }
+
+    function abortCurrentSubscription() {
+        try {
+            if (currentStreaming.reader) {
+                currentStreaming.reader.cancel && currentStreaming.reader.cancel();
+            }
+        } catch (e) {}
+        try {
+            if (currentStreaming.controller) {
+                currentStreaming.controller.abort();
+            }
+        } catch (e) {}
+        currentStreaming.active = false;
+        currentStreaming.controller = null;
+        currentStreaming.reader = null;
+        // Не очищаем assistantId и lastSeqSeen — полезно для автоподписки
+
+        // Обновляем UI (включая кнопку)
+        setStreamingUI(false);
+    }
+
+    async function startStreaming({ assistantId = null, message = null, use_rag = true, temperature = 0.7, lastSeqSeen = undefined } = {}) {
+        // Если уже подписаны на тот же assistantId — ничего не делаем
+        if (assistantId && currentStreaming.active && currentStreaming.assistantId === assistantId) {
+            return;
+        }
+
+        // Отменяем предыдущую подписку (если есть)
+        abortCurrentSubscription();
+
+        // Создаём temp element если ассистентский элемент отсутствует
+        let tempAssistantElement = null;
+        let isTemp = false;
+        if (assistantId) {
+            tempAssistantElement = messagesContainer.querySelector(`[data-message-id="${assistantId}"]`);
+            if (!tempAssistantElement) {
+                addMessageToUI('assistant', '', assistantId, false);
+                tempAssistantElement = messagesContainer.querySelector(`[data-message-id="${assistantId}"]`);
+            }
+        } else {
+            // Если хотим стартовать новую генерацию (message), добавим временный элемент
+            const tempId = `temp-${Date.now()}`;
+            addMessageToUI('assistant', '__typing__', tempId, false); // помечаем как typing-пузырь
+            tempAssistantElement = messagesContainer.querySelector(`[data-message-id="${tempId}"]`);
+            isTemp = true;
+        }
+        const assistantContentEl = tempAssistantElement ? tempAssistantElement.querySelector('.message-content') : null;
+
+        // Показываем режим стрима (блокируем ввод и меняем кнопку)
+        setStreamingUI(true);
+
+        const controller = new AbortController();
+        currentStreaming.controller = controller;
+        currentStreaming.active = true;
+
+        // Подготовим тело запроса — либо подписка по assistant_message_id, либо запуск новой генерации по message
+        const lastSeq = (typeof lastSeqSeen !== 'undefined') ? lastSeqSeen : (currentStreaming.lastSeqSeen || 0);
+
+        const body = assistantId ? { session_id: sessionId, assistant_message_id: assistantId, last_seq: lastSeq } :
+            { session_id: sessionId, message: message };
+
+        try {
+            const resp = await fetch('/api/chat/stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                signal: controller.signal
+            });
+
+            if (!resp.ok || !resp.body) {
+                currentStreaming.active = false;
+                console.error('Streaming response not ok');
+                setStreamingUI(false);
+                return;
+            }
+
+            const reader = resp.body.getReader();
+            currentStreaming.reader = reader;
+            currentStreaming.assistantId = assistantId || null;
+            if (assistantId && lastSeq !== undefined) currentStreaming.lastSeqSeen = lastSeq;
+
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                // SSE события разделяются пустой строкой
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop(); // остаток
+
+                for (const partRaw of parts) {
+                    const part = partRaw.trim();
+                    if (!part) continue;
+
+                    const prefix = 'data: ';
+                    let payload = null;
+                    if (part.startsWith(prefix)) {
+                        const jsonStr = part.slice(prefix.length).trim();
+                        try {
+                            payload = JSON.parse(jsonStr);
+                        } catch (e) {
+                            console.error('SSE JSON parse error', e, jsonStr);
+                            continue;
+                        }
+                    } else {
+                        payload = { chunk: part };
+                    }
+
+                    // Обновление server last_seq, установка message_id
+                    if (payload.message_id && !currentStreaming.assistantId) {
+                        currentStreaming.assistantId = payload.message_id;
+                        // заменим temp-id на реальный id, если нужно
+                        if (isTemp && tempAssistantElement && tempAssistantElement.dataset.messageId && String(tempAssistantElement.dataset.messageId).startsWith('temp-')) {
+                            tempAssistantElement.dataset.messageId = String(currentStreaming.assistantId);
+                            tempAssistantElement.dataset.isRead = 'false';
+                            unreadMessages.add(String(currentStreaming.assistantId));
+                            updateUnreadIndicator();
+                            isTemp = false;
+                        }
+                    }
+
+                    // Если сервер прислал last_seq при initial header
+                    // (будем применять при обработке initial-пayload)
+                    // special handling for initial snapshot (replace, not append)
+                    if (payload.initial) {
+                        const initialText = (typeof payload.initial_chunk !== 'undefined') ? payload.initial_chunk : (payload.chunk || '');
+                        if (assistantContentEl) {
+                            assistantContentEl.textContent = initialText;
+                            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                        }
+                        if (payload.last_seq !== undefined) {
+                            currentStreaming.lastSeqSeen = Number(payload.last_seq) || 0;
+                        }
+                        // продолжаем (не аппендим initial как обычный chunk)
+                        continue;
+                    }
+
+                    if (payload.error) {
+                        if (assistantContentEl) assistantContentEl.textContent = 'Ошибка: ' + payload.error;
+                    } else if (payload.seq !== undefined) {
+                        const seq = Number(payload.seq);
+                        // игнорируем дубликаты
+                        if (seq <= (currentStreaming.lastSeqSeen || 0)) {
+                            // пропускаем
+                            continue;
+                        }
+                        if (assistantContentEl) {
+                            assistantContentEl.textContent = (assistantContentEl.textContent || '') + (payload.chunk || '');
+                            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                        }
+                        currentStreaming.lastSeqSeen = seq;
+                    } else if (payload.chunk !== undefined) {
+                        // backward-compat: если нет seq и нет initial, просто добавляем (редкий случай)
+                        if (assistantContentEl) {
+                            assistantContentEl.textContent = (assistantContentEl.textContent || '') + payload.chunk;
+                            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                        }
+                    } else if (payload.done) {
+                        // завершение стрима — синхронизируем историю и завершаем подписку
+                        await loadMessages(); // гарантируем корректные timestamps и id
+                        abortCurrentSubscription();
+                        return;
+                    }
+                }
+            }
+
+            // завершение чтения
+            currentStreaming.active = false;
+            currentStreaming.controller = null;
+            currentStreaming.reader = null;
+
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                console.log('Streaming aborted by client');
+                // пометим временный ассистентский элемент как прерванный (если есть)
+                try {
+                    if (tempAssistantElement) {
+                        const el = tempAssistantElement.querySelector('.message-content');
+                        if (el) el.textContent = el.textContent ? el.textContent + '\n\n(Генерация прервана)' : '(Генерация прервана)';
+                    }
+                } catch (e) {}
+            } else {
+                console.error('Streaming error', err);
+            }
+            currentStreaming.active = false;
+            currentStreaming.controller = null;
+            currentStreaming.reader = null;
+            setStreamingUI(false);
+        } finally {
+            // В конце — убедимся, что UI возвращён в нормальное состояние
+            setStreamingUI(false);
+        }
+    }
+
     async function sendMessage() {
-        if (!sessionId || !messageInput.value.trim()) return;
+        if (!sessionId || !messageInput || !messageInput.value.trim()) return;
 
         const message = messageInput.value.trim();
 
@@ -145,46 +451,22 @@ document.addEventListener('DOMContentLoaded', function() {
         addMessageToUI('user', message);
         messageInput.value = '';
 
-        // Показываем индикатор "печатает"
-        const typingIndicator = showTypingIndicator();
-
         try {
-            const response = await fetch('/api/chat/send', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    session_id: sessionId,
-                    message: message
-                })
-            });
+            // Стартуем поток — это запустит серверную генерацию и подпишется на SSE
+            // startStreaming сам создаст временный assistant элемент и заменит его на реальный message_id
+            await startStreaming({ message: message });
 
-            const data = await response.json();
-
-            // Убираем индикатор "печатает"
-            typingIndicator.remove();
-
-            if (data.success) {
-                // Добавляем ответ ассистента
-                addMessageToUI('assistant', data.assistant_message.content, data.assistant_message.id, false);
-
-                // Сохраняем ID непрочитанного сообщения
-                if (data.assistant_message.id) {
-                    unreadMessages.add(data.assistant_message.id);
-                    updateUnreadIndicator();
-                }
-            } else {
-                addMessageToUI('assistant', 'Ошибка: ' + data.error);
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            typingIndicator.remove();
+            // После завершения стрима loadMessages() уже был вызван при done
+        } catch (err) {
+            console.error('sendMessage error', err);
             addMessageToUI('assistant', 'Ошибка соединения с сервером');
+            setStreamingUI(false);
         }
     }
 
     function renderMessages(messages) {
+        if (!messagesContainer) return;
+
         if (!messages || messages.length === 0) {
             messagesContainer.innerHTML = `
                 <div class="no-messages">
@@ -195,7 +477,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         messagesContainer.innerHTML = messages.map(msg => `
-            <div class="message ${msg.role} ${msg.role === 'assistant' && !msg.is_read ? 'unread' : ''}"
+            <div class="message ${msg.role === 'assistant' ? 'bot' : msg.role} ${msg.role === 'assistant' && !msg.is_read ? 'unread' : ''}"
                  data-message-id="${msg.id}"
                  data-is-read="${msg.is_read}">
                 <div class="message-avatar">
@@ -216,11 +498,31 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function addMessageToUI(role, content, messageId = null, isRead = false) {
+        if (!messagesContainer) return;
+
         const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${role} ${role === 'assistant' && !isRead ? 'unread' : ''}`;
+        // role может быть 'user' или 'assistant' — для визуала используем 'bot' для ассистента
+        const visualRole = (role === 'assistant') ? 'bot' : role;
+        messageDiv.className = `message ${visualRole} ${role === 'assistant' && !isRead ? 'unread' : ''}`;
         if (messageId) {
             messageDiv.dataset.messageId = messageId;
             messageDiv.dataset.isRead = isRead;
+        } else {
+            // если нет id, оставим (будет temp-...)
+        }
+
+        // Если content == '__typing__' — рендерим typing-indicator внутри одного ассистентского пузыря
+        let contentHtml = '';
+        if (content === '__typing__') {
+            contentHtml = `
+                <div class="typing-indicator typing-inline">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            `;
+        } else {
+            contentHtml = escapeHtml(content || '');
         }
 
         messageDiv.innerHTML = `
@@ -228,7 +530,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 ${role === 'user' ? '👤' : '🤖'}
             </div>
             <div class="message-wrapper">
-                <div class="message-content">${escapeHtml(content)}</div>
+                <div class="message-content">${contentHtml}</div>
                 <div class="message-time">
                     ${formatDateTime(new Date().toISOString())}
                     ${role === 'assistant' && !isRead ? ' <span class="unread-badge">Новое</span>' : ''}
@@ -242,15 +544,16 @@ document.addEventListener('DOMContentLoaded', function() {
         // Если это непрочитанное сообщение от бота, добавляем в набор
         if (role === 'assistant' && !isRead) {
             if (messageId) {
-                unreadMessages.add(messageId);
+                unreadMessages.add(String(messageId));
             }
             updateUnreadIndicator();
         }
     }
-
     function showTypingIndicator() {
+        if (!messagesContainer) return document.createElement('div');
+
         const typingDiv = document.createElement('div');
-        typingDiv.className = 'message assistant';
+        typingDiv.className = 'message assistant typing-indicator-row';
         typingDiv.innerHTML = `
             <div class="message-avatar">🤖</div>
             <div class="message-wrapper">
@@ -270,12 +573,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Новая функция для обновления набора непрочитанных сообщений
     function updateUnreadMessagesSet() {
+        if (!messagesContainer) return;
+
         unreadMessages.clear();
         const unreadElements = messagesContainer.querySelectorAll('.message.assistant.unread');
         unreadElements.forEach(element => {
             const messageId = element.dataset.messageId;
             if (messageId) {
-                unreadMessages.add(messageId);
+                unreadMessages.add(String(messageId));
             }
         });
         updateUnreadIndicator();
@@ -286,22 +591,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const unreadCount = unreadMessages.size;
 
         // Обновляем бейдж в заголовке
-        if (unreadCount > 0) {
-            chatStatus.innerHTML = `Онлайн • <span class="unread-indicator">${unreadCount} непрочитанных</span>`;
-            chatStatus.classList.add('has-unread');
-        } else {
-            chatStatus.textContent = 'Онлайн';
-            chatStatus.classList.remove('has-unread');
-        }
-
-        // Также можно обновить бейдж уведомлений
-        const notificationBadge = document.getElementById('notificationBadge');
-        if (notificationBadge) {
+        if (chatStatus) {
             if (unreadCount > 0) {
-                notificationBadge.textContent = unreadCount;
-                notificationBadge.style.display = 'flex';
+                chatStatus.innerHTML = `Онлайн • <span class="unread-indicator">${unreadCount} непрочитанных</span>`;
+                chatStatus.classList.add('has-unread');
             } else {
-                notificationBadge.style.display = 'none';
+                chatStatus.textContent = 'Онлайн';
+                chatStatus.classList.remove('has-unread');
             }
         }
 
@@ -311,6 +607,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Функция для проверки видимости сообщений
     function checkVisibleMessages() {
+        if (!messagesContainer) return;
+
         const messages = messagesContainer.querySelectorAll('.message.assistant.unread');
         const visibleUnread = [];
 
@@ -372,7 +670,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
 
                     // Удаляем из набора
-                    unreadMessages.delete(id);
+                    unreadMessages.delete(String(id));
                 });
 
                 updateUnreadIndicator();
@@ -389,11 +687,13 @@ document.addEventListener('DOMContentLoaded', function() {
             clearInterval(checkUnreadInterval);
         }
 
-        // Проверяем каждые 500ms
+        // Проверяем каждые 500ms видимость сообщений
         checkUnreadInterval = setInterval(checkVisibleMessages, 500);
 
         // Также проверяем при прокрутке
-        messagesContainer.addEventListener('scroll', debounce(checkVisibleMessages, 100));
+        if (messagesContainer) {
+            messagesContainer.addEventListener('scroll', debounce(checkVisibleMessages, 100));
+        }
     }
 
     // Функция для обновления плавающего индикатора
@@ -417,6 +717,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Функция для прокрутки к первому непрочитанному сообщению
     function scrollToFirstUnread() {
+        if (!messagesContainer) return;
+
         const firstUnread = messagesContainer.querySelector('.message.assistant.unread');
         if (firstUnread) {
             firstUnread.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -429,68 +731,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    async function loadNotifications() {
-        try {
-            const response = await fetch('/api/notifications');
-            const data = await response.json();
-
-            if (data.success) {
-                renderNotifications(data.notifications);
-            }
-        } catch (error) {
-            console.error('Error:', error);
-        }
-    }
-
-    function renderNotifications(notifications) {
-        const container = document.getElementById('notificationsList');
-
-        if (!notifications || notifications.length === 0) {
-            container.innerHTML = '<div class="no-notifications">Нет уведомлений</div>';
-            return;
-        }
-
-        container.innerHTML = notifications.map(notification => `
-            <div class="notification-item ${notification.unread ? 'unread' : ''}">
-                <div class="notification-icon-wrapper">${getNotificationIcon(notification.type)}</div>
-                <div class="notification-content">
-                    <p class="notification-title">${escapeHtml(notification.title)}</p>
-                    <p class="notification-text">${escapeHtml(notification.message)}</p>
-                    <p class="notification-time">${formatDateTime(notification.created_at)}</p>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    function getNotificationIcon(type) {
-        const icons = {
-            'deadline': '⚠️',
-            'task_completed': '✅',
-            'new_task': '📝',
-            'system': '🔔'
-        };
-        return icons[type] || '🔔';
-    }
-
-    function formatDateTime(dateTimeStr) {
-        if (!dateTimeStr) return '';
-
-        const date = new Date(dateTimeStr);
-        return date.toLocaleString('ru-RU', {
-            hour: '2-digit',
-            minute: '2-digit',
-            day: '2-digit',
-            month: '2-digit'
-        });
-    }
-
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+    function updateUnreadCount(count) {
+        // Синхронизируем (не стираем сообщения, только используем для инициализации)
+        // оставляем место для логики инициализации набора
     }
 
     function showErrorMessage(message) {
+        if (!messagesContainer) return;
+
         messagesContainer.innerHTML = `
             <div class="error-message">
                 ${escapeHtml(message)}
@@ -498,10 +746,10 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
     }
 
-    function updateUnreadCount(count) {
-        unreadMessages.clear();
-        // Здесь можно добавить логику для инициализации набора
-        // на основе начального количества непрочитанных
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     // Функция debounce для оптимизации

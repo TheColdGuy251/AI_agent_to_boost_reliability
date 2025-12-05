@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, current_app
 from flask_login import login_required, current_user
 from datetime import datetime, timezone, timedelta, UTC
 import uuid
@@ -75,7 +75,7 @@ def get_tasks():
 @tasks_bp.route('/api/tasks', methods=['POST'])
 @login_required
 def create_task():
-    """Создать новую задачу"""
+    """Создать новую задачу (и отправить системный промпт модели в потоковом режиме)"""
     data = request.get_json()
 
     if not data or not data.get('title') or not data.get('due_date'):
@@ -120,29 +120,80 @@ def create_task():
         chat_session = ChatSession(
             user_id=current_user.id,
             task_id=task.id,
-            session_id=str(uuid.uuid4())
+            session_id=str(uuid.uuid4()),
+            title=f"Чат для задачи: {task.title}"
         )
 
         session.add(chat_session)
         session.commit()
-
-        # Создаем системное сообщение
-        system_message = ChatMessage(
-            session_id=chat_session.id,
-            role='system',
-            content=f"Задача: {task.title}\nСрок: {task.due_date.strftime('%d.%m.%Y %H:%M')}\nОписание: {task.description}"
-        )
-
-        session.add(system_message)
-        session.commit()
+        session.refresh(chat_session)
 
         logger.info(f"Создана задача {task.id} для пользователя {current_user.id}")
 
+        # --- Новый: формируем системный промпт и отправляем его в модель потоково ---
+        # Собираем ФИО работника полно — surname name patronymic
+        user_full_name = f"{current_user.surname} {current_user.name} {current_user.patronymic or ''}".strip()
+
+        system_prompt = (
+            f"Сотрудник: {user_full_name}\n"
+            f"Должность: {current_user.position}\n\n"
+            f"Создана новая задача:\n"
+            f"Название: {task.title}\n"
+            f"Описание: {task.description or 'Нет описания'}\n"
+            f"Дедлайн: {task.due_date.isoformat()}\n\n"
+            "Ты — ассистент по сопровождению задач. "
+            "Сформируй короткое приветственное сообщение сотруднику (1-2 предложения) и "
+            "подтверди создание задачи, укажи ключевые сроки (в одно предложение). "
+            "Сообщение должно быть вежливым и профессиональным."
+        )
+
+        user_request = "Пожалуйста, сгенерируй приветственное сообщение и подтверди создание задачи."
+
+        # Создаём assistant_message-заготовку (пустой контент) — клиент подхватит его по message_id
+        system_message = ChatMessage(
+            session_id=chat_session.id,
+            role='system',
+            content=system_prompt
+        )
+        session.add(system_message)
+        session.commit()
+        assistant_message = ChatMessage(
+            session_id=chat_session.id,
+            role='assistant',
+            content='',  # будет заполняться воркером
+            is_read=False
+        )
+        session.add(assistant_message)
+        session.commit()
+        session.refresh(assistant_message)
+
+        # Запускаем фоновую генерацию через manager (import локально чтобы избежать circular import)
+        from routes.chat import start_generation_task
+
+        chat_service = current_app.chat_service
+
+        # История — можно передать последние сообщения (в этом случае истории нет, так как только что создали session)
+        history = []  # либо соберите систему/вопросы, если нужно
+
+        # Запускаем воркер, передаём system_prompt чтобы модель учитывала его как системный контекст
+        start_generation_task(
+            assistant_message_id=int(assistant_message.id),
+            chat_session_id=chat_session.id,
+            user_message=user_request,
+            history=history,
+            use_rag=False,  # у вас тут, вероятно, RAG не обязателен — можно True если нужно
+            temperature=0.7,
+            chat_service=current_app.chat_service,
+            system_prompt=system_prompt
+        )
+
+        # Вернём redirect_url как раньше
         return jsonify({
             'success': True,
             'message': 'Задача успешно создана',
             'task': task.to_dict(),
             'chat_session_id': chat_session.session_id,
+            'assistant_message': assistant_message.to_dict(),
             'redirect_url': f'/chat/session/{task.id}'
         }), 201
 
