@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Переменные для непрочитанных сообщений
     let unreadMessages = new Set();
     let checkUnreadInterval = null;
+    let isProcessingDocument = false;
 
     // Текущее состояние подписки/стрима
     let currentStreaming = {
@@ -764,4 +765,166 @@ function markLocalAssistantAsCancelled() {
             timeout = setTimeout(later, wait);
         };
     }
+    async function uploadDocument(file) {
+    if (!sessionId || !file || isProcessingDocument) return;
+
+    // Блокируем интерфейс
+    isProcessingDocument = true;
+    setUILocked(true);
+
+    // Показываем статус загрузки
+    const uploadStatus = document.getElementById('uploadStatus');
+    const uploadText = uploadStatus.querySelector('.upload-text');
+    const uploadProgressBar = uploadStatus.querySelector('.upload-progress-bar');
+
+    uploadStatus.style.display = 'block';
+    uploadStatus.className = 'upload-status';
+    uploadText.textContent = 'Загрузка и обработка документа...';
+    uploadProgressBar.style.width = '0%';
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('session_id', sessionId);
+
+    try {
+        const response = await fetch('/api/chat/upload-document', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        // Анимация прогресса
+        uploadProgressBar.style.width = '100%';
+
+        if (data.success) {
+            // Показываем успех
+            uploadStatus.className = 'upload-status success';
+            uploadText.textContent = `✓ Файл "${file.name}" успешно загружен!`;
+
+            // Добавляем сообщение от бота
+            setTimeout(() => {
+                addMessageToUI('assistant',
+                    `Документ "${file.name}" успешно загружен и добавлен в базу знаний.\n\n` +
+                    `Файл: ${data.file.name} (${Math.round(data.file.size / 1024)} KB)\n` +
+                    `Добавлено фрагментов: ${data.collection_info.total_chunks}\n` +
+                    `Теперь вы можете задавать вопросы по содержанию этого документа.`
+                );
+            }, 500);
+
+            // Скрываем статус через 3 секунды
+            setTimeout(() => {
+                uploadStatus.style.display = 'none';
+            }, 3000);
+
+        } else {
+            // Показываем ошибку
+            uploadStatus.className = 'upload-status error';
+            uploadText.textContent = `Ошибка: ${data.error}`;
+
+            // Скрываем статус через 5 секунд
+            setTimeout(() => {
+                uploadStatus.style.display = 'none';
+            }, 5000);
+        }
+
+    } catch (error) {
+        console.error('Ошибка при загрузке файла:', error);
+
+        uploadStatus.className = 'upload-status error';
+        uploadText.textContent = 'Ошибка подключения к серверу';
+
+        setTimeout(() => {
+            uploadStatus.style.display = 'none';
+        }, 5000);
+
+    } finally {
+        // Разблокируем интерфейс
+        isProcessingDocument = false;
+        setUILocked(false);
+    }
+}
+
+// Добавьте эту функцию для блокировки/разблокировки интерфейса
+function setUILocked(locked) {
+    const messageInput = document.getElementById('messageInput');
+    const sendButton = document.getElementById('sendButton');
+    const attachButton = document.getElementById('attachButton');
+    const fileInput = document.getElementById('fileInput');
+
+    if (messageInput) messageInput.disabled = locked;
+    if (sendButton) sendButton.disabled = locked;
+    if (attachButton) attachButton.disabled = locked;
+    if (fileInput) fileInput.disabled = locked;
+
+    if (locked) {
+        if (messageInput) messageInput.placeholder = 'Обработка документа...';
+        if (attachButton) attachButton.style.opacity = '0.5';
+    } else {
+        if (messageInput) messageInput.placeholder = 'Задайте вопрос о задаче или оборудовании...';
+        if (attachButton) attachButton.style.opacity = '1';
+    }
+}
+    // Добавьте эти элементы после существующего кода
+    const fileInput = document.getElementById('fileInput');
+    const attachButton = document.getElementById('attachButton');
+
+    // Обработчик клика на скрепку
+    if (attachButton && fileInput) {
+        attachButton.addEventListener('click', (e) => {
+            if (!isProcessingDocument && sessionId) {
+                fileInput.click();
+            }
+        });
+
+        attachButton.addEventListener('dragenter', (e) => {
+            if (!isProcessingDocument && sessionId) {
+                e.preventDefault();
+                attachButton.style.backgroundColor = 'rgba(255, 215, 0, 0.2)';
+            }
+        });
+
+        attachButton.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            attachButton.style.backgroundColor = '';
+        });
+
+        attachButton.addEventListener('dragover', (e) => {
+            if (!isProcessingDocument && sessionId) {
+                e.preventDefault();
+            }
+        });
+
+        attachButton.addEventListener('drop', (e) => {
+            e.preventDefault();
+            attachButton.style.backgroundColor = '';
+
+            if (!isProcessingDocument && sessionId && e.dataTransfer.files.length > 0) {
+                const file = e.dataTransfer.files[0];
+                if (file.name.endsWith('.docx')) {
+                    uploadDocument(file);
+                } else {
+                    addMessageToUI('assistant', 'Поддерживаются только файлы формата .docx');
+                }
+            }
+        });
+    }
+
+    // Обработчик выбора файла через input
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                const file = e.target.files[0];
+                if (file.name.endsWith('.docx')) {
+                    uploadDocument(file);
+                    // Сбрасываем значение input, чтобы можно было загрузить тот же файл снова
+                    fileInput.value = '';
+                } else {
+                    addMessageToUI('assistant', 'Поддерживаются только файлы формата .docx');
+                    fileInput.value = '';
+                }
+            }
+        });
+    }
 });
+

@@ -10,6 +10,7 @@ from typing import Optional, List, Dict
 import time
 from threading import Thread, Lock
 import queue
+from pathlib import Path
 
 from sqlalchemy import func, desc
 from data.db_session import create_session
@@ -1057,3 +1058,94 @@ def get_task_id_by_session(session_id):
         except Exception:
             logger.exception("Ошибка при получении task_id")
             return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@chat_bp.route('/api/chat/upload-document', methods=['POST'])
+@login_required
+def upload_chat_document():
+    """Загрузить документ в чате и обновить векторную базу"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'Файл не предоставлен'}), 400
+
+        file = request.files['file']
+        session_id = request.form.get('session_id')
+
+        if not session_id:
+            return jsonify({'success': False, 'error': 'Не указан session_id'}), 400
+
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'Имя файла пустое'}), 400
+
+        if not file.filename.endswith('.docx'):
+            return jsonify({'success': False, 'error': 'Поддерживаются только файлы .docx'}), 400
+
+        # Получаем чат-сессию для проверки прав
+        with session_scope() as db_session:
+            chat_session = db_session.query(ChatSession).filter_by(
+                session_id=session_id,
+                user_id=current_user.id
+            ).first()
+            if not chat_session:
+                return jsonify({'success': False, 'error': 'Сессия не найдена'}), 404
+
+        # Получаем document_processor из текущего приложения
+        document_processor = current_app.document_processor
+        if not document_processor:
+            return jsonify({'success': False, 'error': 'DocumentProcessor не инициализирован'}), 500
+
+        # Сохраняем файл в папку docs
+        docs_dir = Path(Config.DOCS_DIR)
+        file_path = docs_dir / file.filename
+
+        # Проверяем, не существует ли уже файл с таким именем
+        if file_path.exists():
+            # Добавляем временную метку к имени файла
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            name_parts = file.filename.rsplit('.', 1)
+            new_filename = f"{name_parts[0]}_{timestamp}.{name_parts[1]}" if len(
+                name_parts) > 1 else f"{file.filename}_{timestamp}"
+            file_path = docs_dir / new_filename
+            file.filename = new_filename
+
+        file.save(file_path)
+
+        try:
+            # Обрабатываем новый документ
+            doc_info = document_processor.process_single_document(file_path)
+
+            if not doc_info:
+                # Удаляем файл если не удалось обработать
+                file_path.unlink(missing_ok=True)
+                return jsonify({'success': False, 'error': 'Не удалось обработать документ'}), 500
+
+            # Добавляем в векторную базу
+            document_processor.add_documents_to_vector_db([doc_info])
+
+            # Получаем обновленную информацию о коллекции
+            collection_info = document_processor.get_collection_info()
+
+            return jsonify({
+                'success': True,
+                'message': 'Документ успешно загружен и добавлен в базу знаний',
+                'file': {
+                    'name': file.filename,
+                    'size': file_path.stat().st_size,
+                    'chunks': doc_info['chunk_count'],
+                    'words': doc_info['word_count']
+                },
+                'collection_info': {
+                    'total_chunks': collection_info.get('total_chunks', 0),
+                    'unique_files': collection_info.get('unique_files', 0)
+                }
+            }), 201
+
+        except Exception as e:
+            # Удаляем файл в случае ошибки обработки
+            file_path.unlink(missing_ok=True)
+            logger.exception("Ошибка при обработке загруженного документа")
+            return jsonify({'success': False, 'error': f'Ошибка обработки документа: {str(e)}'}), 500
+
+    except Exception as e:
+        logger.exception("Ошибка при загрузке документа")
+        return jsonify({'success': False, 'error': str(e)}), 500
