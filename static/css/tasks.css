@@ -1,0 +1,529 @@
+/* Контейнеры и заголовки задач */
+.tasks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.tasks-header h1 {
+  font-size: 28px;
+  color: var(--text-light);
+}
+
+.tasks-filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  padding: 8px 16px;
+  background-color: var(--bg-message-bot);
+  color: var(--text-light);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.filter-btn:hover,
+.filter-btn.active {
+  background-color: var(--rosneft-yellow);
+  color: var(--rosneft-black);
+  border-color: var(--rosneft-yellow);
+}
+
+.create-task-btn {
+  padding: 10px 20px;
+  background-color: var(--rosneft-yellow);
+  color: var(--rosneft-black);
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.create-task-btn:hover {
+  background-color: var(--rosneft-yellow-dark);
+}
+
+/* Статистика */
+.stats-container {
+  background-color: var(--bg-chat);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 30px;
+  border: 1px solid var(--border-color);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  background-color: var(--bg-message-bot);
+  border-radius: 8px;
+  padding: 15px;
+  text-align: center;
+  border: 1px solid var(--border-color);
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--rosneft-yellow);
+  margin-bottom: 5px;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #CCCCCC;
+}
+
+.upcoming-tasks h3 {
+  font-size: 16px;
+  color: var(--text-light);
+  margin-bottom: 10px;
+}
+
+.upcoming-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.upcoming-task {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  background-color: var(--bg-message-bot);
+  border-radius: 6px;
+  border-left: 3px solid var(--rosneft-yellow);
+}
+
+.upcoming-title {
+  font-size: 14px;
+  color: var(--text-light);
+}
+
+.upcoming-time {
+  font-size: 12px;
+  color: #FFAA00;
+}
+
+/* Список задач */
+.tasks-container {
+  background-color: var(--bg-chat);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid var(--border-color);
+}
+
+.task-item {
+  background-color: var(--bg-message-bot);
+  border-radius: 8px;
+  padding: 20px;
+  border: 1px solid var(--border-color);
+  transition: border-color 0.3s;
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.task-item:hover {
+  border-color: var(--rosneft-yellow);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.1);
+}
+
+.task-item::after {
+  content: "Кликните для перехода в чат";
+  position: absolute;
+  bottom: -20px;
+  left: 0;
+  right: 0;
+  font-size: 12px;
+  color: var(--rosneft-yellow);
+  opacity: 0;
+  transition: opacity 0.3s;
+  text-align: center;
+}
+
+.task-item:hover::after {
+  opacity: 1;
+}
+
+.task-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.task-item-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-light);
+  flex: 1;
+}
+
+.task-item-status {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.task-item-status.active {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.task-item-status.pending {
+  background-color: #FF9800;
+  color: white;
+}
+
+.task-item-status.completed {
+  background-color: #2196F3;
+  color: white;
+}
+
+.task-item-description {
+  font-size: 14px;
+  color: #CCCCCC;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+.task-item-deadline {
+  font-size: 14px;
+  color: #FFAA00;
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.overdue-badge {
+  background-color: #FF4444;
+  color: white;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.task-item-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+  position: relative;
+  z-index: 2;
+}
+
+.action-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.3s;
+}
+
+.action-btn:hover {
+  opacity: 0.9;
+}
+
+.toggle-btn {
+  background-color: var(--rosneft-yellow);
+  color: var(--rosneft-black);
+}
+
+.edit-btn {
+  background-color: #4A4A4A;
+  color: var(--text-light);
+}
+
+.delete-btn {
+  background-color: #8B0000;
+  color: var(--text-light);
+}
+
+/* Форма задачи */
+.task-form-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.task-form-modal.active {
+  display: flex;
+}
+
+.task-form-modal-content {
+  background-color: #2A2A2A;
+  border-radius: 12px;
+  padding: 32px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--border-color);
+  position: relative;
+}
+
+.task-form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.task-form-header h2 {
+  font-size: 22px;
+  color: var(--text-light);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: var(--text-light);
+  font-size: 28px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-btn:hover {
+  color: var(--rosneft-yellow);
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 14px;
+  color: var(--text-light);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 12px 16px;
+  background-color: var(--bg-message-bot);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-light);
+  font-size: 14px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  transition: border-color 0.3s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--rosneft-yellow);
+}
+
+.form-group textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.cancel-btn {
+  padding: 10px 20px;
+  background-color: #4A4A4A;
+  color: var(--text-light);
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.cancel-btn:hover {
+  background-color: #5A5A5A;
+}
+
+.submit-btn {
+  padding: 10px 20px;
+  background-color: var(--rosneft-yellow);
+  color: var(--rosneft-black);
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.submit-btn:hover {
+  background-color: var(--rosneft-yellow-dark);
+}
+
+/* Состояния */
+.no-tasks,
+.no-messages {
+  text-align: center;
+  padding: 40px;
+  color: #CCCCCC;
+  font-size: 16px;
+}
+
+.error-message {
+  color: #FF4444;
+  font-size: 13px;
+  padding: 8px;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .tasks-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tasks-filters {
+    justify-content: center;
+  }
+
+  .create-task-btn {
+    width: 100%;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .task-item-actions {
+    flex-direction: column;
+  }
+
+  .action-btn {
+    width: 100%;
+  }
+
+  .task-form-modal-content {
+    width: 95%;
+    padding: 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .task-form-modal-content {
+    width: 95%;
+    padding: 20px;
+  }
+}
+/* Добавьте в конец файла chat.css */
+
+.message.assistant[data-is-generating="true"] .message-content {
+    position: relative;
+}
+
+.typing-indicator {
+    display: flex;
+    gap: 4px;
+    padding: 8px 0;
+}
+
+.typing-dot {
+    width: 6px;
+    height: 6px;
+    background-color: var(--rosneft-yellow);
+    border-radius: 50%;
+    animation: typing 1.4s infinite;
+}
+
+.typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typing {
+    0%, 60%, 100% {
+        transform: translateY(0);
+        opacity: 0.7;
+    }
+    30% {
+        transform: translateY(-8px);
+        opacity: 1;
+    }
+}
+
+.generating-badge {
+    display: inline-block;
+    background-color: var(--rosneft-yellow);
+    color: var(--rosneft-black);
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    margin-left: 8px;
+    font-weight: 600;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.message-content.new-chunk {
+    animation: highlightChunk 0.5s ease;
+}
+
+@keyframes highlightChunk {
+    0% { background-color: rgba(255, 215, 0, 0.1); }
+    100% { background-color: transparent; }
+}
+
+.message.error .message-content {
+    border-color: #ff4444;
+    background-color: rgba(255, 68, 68, 0.1);
+}
